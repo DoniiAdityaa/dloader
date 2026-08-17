@@ -1,3 +1,5 @@
+import 'package:dloader/presentation/history_screen.dart';
+import 'package:dloader/presentation/settings_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import '../presentation/home_screen.dart';
@@ -14,18 +16,8 @@ class _MainNavigationState extends State<MainNavigation> {
 
   final List<Widget> _screens = const [
     HomeScreen(),
-    Center(
-      child: Text(
-        'Halaman History',
-        style: TextStyle(fontSize: 18, color: Colors.grey),
-      ),
-    ),
-    Center(
-      child: Text(
-        'Halaman Settings',
-        style: TextStyle(fontSize: 18, color: Colors.grey),
-      ),
-    ),
+    HistoryScreen(),
+    SettingsScreen(),
   ];
 
   @override
@@ -49,6 +41,7 @@ class _MainNavigationState extends State<MainNavigation> {
         quality: GlassQuality.premium,
         maskingQuality: MaskingQuality.high,
         innerBlur: 4,
+
         settings: const LiquidGlassSettings(
           thickness: 35,
           blur: 8,
@@ -75,7 +68,6 @@ class _MainNavigationState extends State<MainNavigation> {
           decoration: TextDecoration.none,
         ),
         unselectedLabelStyle: TextStyle(
-          fontSize: 12,
           fontWeight: FontWeight.normal,
           color: Colors.white.withValues(alpha: 0.45),
           decoration: TextDecoration.none,

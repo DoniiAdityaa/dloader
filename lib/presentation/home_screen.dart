@@ -12,6 +12,31 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _urlController = TextEditingController();
   String _selectedMode = 'auto';
+  bool _showPreview = false;
+
+  bool _isDownloadloading = false;
+  double _downloadProgress = 0.0;
+  bool _isDownloadedSuccess = false;
+
+  // function
+  void _startSimulatedDownload() async {
+    setState(() {
+      _isDownloadloading = true;
+      _downloadProgress = 0.0;
+      _isDownloadedSuccess = false;
+    });
+
+    for (int i = 1; i <= 10; i++) {
+      await Future.delayed(const Duration(milliseconds: 250));
+      setState(() {
+        _downloadProgress = i / 100.0;
+      });
+    }
+    setState(() {
+      _isDownloadloading = false;
+      _isDownloadedSuccess = true;
+    });
+  }
 
   @override
   void dispose() {
@@ -43,7 +68,12 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            padding: const EdgeInsets.only(
+              left: 24,
+              right: 24,
+              top: 20,
+              bottom: 100,
+            ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -56,6 +86,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 _modeOptions(),
                 const SizedBox(height: 12),
                 _pasteAndDownloadButton(),
+                if (_showPreview) ...[
+                  const SizedBox(height: 20),
+                  _mediaPreviewCard(),
+                ],
               ],
             ),
           ),
@@ -126,15 +160,13 @@ class _HomeScreenState extends State<HomeScreen> {
             onChanged: (_) => setState(() {}),
           ),
         ),
-        // Animasi "Tuing" Membal Tombol '>>' saat Ada Teks
         AnimatedSize(
           duration: const Duration(milliseconds: 400),
           curve: Curves.easeOutBack,
           child: AnimatedScale(
-            scale: hasText ? 1.0 : 0.0, // Scale 0 -> 1 saat teks terisi
+            scale: hasText ? 1.0 : 0.0,
             duration: const Duration(milliseconds: 400),
-            curve: Curves
-                .elasticOut, // 👈 Kurva 'elasticOut' untuk efek membal "Tuing"!
+            curve: Curves.elasticOut,
             alignment: Alignment.center,
             child: hasText
                 ? Padding(
@@ -148,7 +180,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         onPressed: () {
                           FocusScope.of(context).unfocus();
-                          // Pemicu fetch media
+                          setState(() {
+                            _showPreview = true;
+                          });
                         },
                       ),
                     ),
@@ -221,6 +255,121 @@ class _HomeScreenState extends State<HomeScreen> {
               letterSpacing: 0.5,
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  //  komponen kartu hasil preview (function)
+  Widget _mediaPreviewCard() {
+    return GlassCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              height: 180,
+              width: double.infinity,
+              color: Colors.white.withValues(alpha: 0.08),
+              child: const Center(
+                child: Icon(
+                  Icons.play_circle_fill_rounded,
+                  size: 56,
+                  color: Colors.white70,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          const Text(
+            'Instagram Reels Video',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Mode $_selectedMode • Format: .mp4 (HD)',
+            style: const TextStyle(fontSize: 11, color: Colors.white54),
+          ),
+          const SizedBox(height: 16),
+          if (_isDownloadloading) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: LinearProgressIndicator(
+                value: _downloadProgress,
+                minHeight: 8,
+                backgroundColor: Colors.white.withValues(alpha: 0.1),
+                valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Center(
+              child: Text(
+                'Mengunduh... ${(_downloadProgress * 100).toInt()}%',
+                style: const TextStyle(fontSize: 12, color: Colors.white70),
+              ),
+            ),
+          ] else if (_isDownloadedSuccess) ...[
+            // Tombol Sukses Centang
+            Container(
+              height: 44,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: Colors.green.withValues(alpha: 0.25),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.green.withValues(alpha: 0.5)),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.check_circle_rounded,
+                    color: Colors.greenAccent,
+                    size: 18,
+                  ),
+                  SizedBox(width: 8),
+                  Text(
+                    'Tersimpan di Galeri!',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ] else ...[
+            // Tombol Biasa "Simpan ke Galeri"
+            SizedBox(
+              width: double.infinity,
+              child: GlassButton.custom(
+                height: 44,
+                shape: const LiquidRoundedRectangle(borderRadius: 12),
+                onTap: _startSimulatedDownload,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: const [
+                    Icon(Icons.download_rounded, size: 18, color: Colors.white),
+                    SizedBox(width: 8),
+                    Text(
+                      'Simpan ke Galeri',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
