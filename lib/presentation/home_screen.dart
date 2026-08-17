@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
+
+import '../cubit/downloader_cubit.dart';
+import '../cubit/downloader_state.dart';
+import '../models/media_item.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -11,32 +16,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _urlController = TextEditingController();
-  String _selectedMode = 'auto';
-  bool _showPreview = false;
-
-  bool _isDownloadloading = false;
-  double _downloadProgress = 0.0;
-  bool _isDownloadedSuccess = false;
-
-  // function
-  void _startSimulatedDownload() async {
-    setState(() {
-      _isDownloadloading = true;
-      _downloadProgress = 0.0;
-      _isDownloadedSuccess = false;
-    });
-
-    for (int i = 1; i <= 10; i++) {
-      await Future.delayed(const Duration(milliseconds: 250));
-      setState(() {
-        _downloadProgress = i / 100.0;
-      });
-    }
-    setState(() {
-      _isDownloadloading = false;
-      _isDownloadedSuccess = true;
-    });
-  }
+  String _selectedMode = 'auto'; // 'auto', 'audio', 'mute'
 
   @override
   void dispose() {
@@ -59,6 +39,18 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _urlController.clear();
     });
+    context.read<DownloaderCubit>().reset();
+  }
+
+  // Action pemicu download
+  void _triggerDownload() {
+    if (_urlController.text.trim().isNotEmpty) {
+      FocusScope.of(context).unfocus();
+      context.read<DownloaderCubit>().fetchMedia(
+            _urlController.text.trim(),
+            mode: _selectedMode,
+          );
+    }
   }
 
   @override
@@ -74,23 +66,51 @@ class _HomeScreenState extends State<HomeScreen> {
               top: 20,
               bottom: 100,
             ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _brandHeader(),
-                const SizedBox(height: 28),
-                _maskotHero(),
-                const SizedBox(height: 32),
-                _inputSection(),
-                const SizedBox(height: 16),
-                _modeOptions(),
-                const SizedBox(height: 12),
-                _pasteAndDownloadButton(),
-                if (_showPreview) ...[
-                  const SizedBox(height: 20),
-                  _mediaPreviewCard(),
-                ],
-              ],
+            child: BlocConsumer<DownloaderCubit, DownloaderState>(
+              listener: (context, state) {
+                if (state is MediaExtractedSuccess) {
+                  // Otomatis mulai unduh byte file & simpan ke galeri
+                  context.read<DownloaderCubit>().saveToGallery(state.mediaItem);
+                } else if (state is DownloadSuccess) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('🎉 Berhasil tersimpan di Galeri!'),
+                      backgroundColor: Colors.green,
+                      duration: Duration(seconds: 3),
+                    ),
+                  );
+                } else if (state is DownloaderFailure) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('⚠️ ${state.errorMessage}'),
+                      backgroundColor: Colors.redAccent,
+                      duration: const Duration(seconds: 4),
+                    ),
+                  );
+                }
+              },
+              builder: (context, state) {
+                return Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _brandHeader(),
+                    const SizedBox(height: 28),
+                    _maskotHero(),
+                    const SizedBox(height: 32),
+                    _inputSection(state is DownloaderLoading),
+                    const SizedBox(height: 16),
+                    _modeOptions(),
+                    const SizedBox(height: 12),
+                    _pasteAndDownloadButton(state is DownloaderLoading),
+                    
+                    // Card Preview & State Dynamic
+                    if (state is! DownloaderInitial) ...[
+                      const SizedBox(height: 20),
+                      _mediaPreviewSection(state),
+                    ],
+                  ],
+                );
+              },
             ),
           ),
         ),
@@ -111,10 +131,9 @@ class _HomeScreenState extends State<HomeScreen> {
             color: Colors.white,
           ),
         ),
-        SizedBox(height: 6),
+        SizedBox(height: 4),
         Text(
-          'downloader — fast, clean, no ads',
-          textAlign: TextAlign.center,
+          'download any instagram reels & photos in seconds',
           style: TextStyle(
             fontSize: 12,
             color: Colors.white54,
@@ -125,20 +144,22 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // komponen maskot
+  // Komponen Maskot Hero Image
   Widget _maskotHero() {
-    return SizedBox(
-      height: 180,
-      child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
+    return Image.asset(
+      'assets/images/logo.png',
+      height: 130,
+      fit: BoxFit.contain,
     );
   }
 
-  // komponen Input Section
-  Widget _inputSection() {
+  // Komponen Input Field Link dengan animasi tuing button >>
+  Widget _inputSection(bool isLoading) {
     final hasText = _urlController.text.isNotEmpty;
+
     return Row(
       children: [
-        // Input Field Kaca (100% Full saat kosong, menyempit halus saat ada teks)
+        // Input Field Kaca
         Expanded(
           child: GlassTextField(
             controller: _urlController,
@@ -146,7 +167,6 @@ class _HomeScreenState extends State<HomeScreen> {
             shape: const LiquidRoundedRectangle(borderRadius: 999),
             placeholder: 'paste the link here...',
             prefixIcon: const Icon(Icons.link_rounded, color: Colors.white70),
-            // Tombol 'X' clear
             suffixIcon: hasText
                 ? IconButton(
                     icon: const Icon(
@@ -173,17 +193,21 @@ class _HomeScreenState extends State<HomeScreen> {
                     padding: const EdgeInsets.only(left: 8.0),
                     child: RepaintBoundary(
                       child: GlassIconButton(
-                        icon: const Icon(
-                          Icons.keyboard_double_arrow_right_rounded,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                        onPressed: () {
-                          FocusScope.of(context).unfocus();
-                          setState(() {
-                            _showPreview = true;
-                          });
-                        },
+                        icon: isLoading
+                            ? const SizedBox(
+                                height: 16,
+                                width: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(
+                                Icons.keyboard_double_arrow_right_rounded,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                        onPressed: isLoading ? null : _triggerDownload,
                       ),
                     ),
                   )
@@ -194,7 +218,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // komponen action buttons
+  // Komponen Mode Options Chips (auto, audio, mute)
   Widget _modeOptions() {
     final isAuto = _selectedMode == 'auto';
     final isAudio = _selectedMode == 'audio';
@@ -227,41 +251,90 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// Tombol Utama Lebar: Paste & Download
-  Widget _pasteAndDownloadButton() {
+  // Tombol Utama Lebar: Paste & Download
+  Widget _pasteAndDownloadButton(bool isLoading) {
     return GlassButton.custom(
       height: 50,
-      shape: const LiquidRoundedRectangle(
-        borderRadius: 999,
-      ), // 👈 Bentuk tombol persegi melayang
-      onTap: () async {
-        await _pasteFromClipboard();
-        if (_urlController.text.isNotEmpty) {
-          FocusScope.of(context).unfocus();
-          // Pemicu fetch & download!
+      shape: const LiquidRoundedRectangle(borderRadius: 999),
+      onTap: () {
+        if (!isLoading) {
+          _pasteFromClipboard().then((_) => _triggerDownload());
         }
       },
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
-        children: const [
-          Icon(Icons.assignment_rounded, size: 18, color: Colors.white),
-          SizedBox(width: 8),
-          Text(
-            'paste and download',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 0.5,
+        children: [
+          if (isLoading) ...[
+            const SizedBox(
+              height: 18,
+              width: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
             ),
-          ),
+            const SizedBox(width: 10),
+            const Text(
+              'memproses link...',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ] else ...[
+            const Icon(Icons.assignment_rounded, size: 18, color: Colors.white),
+            const SizedBox(width: 8),
+            const Text(
+              'paste and download',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 
-  //  komponen kartu hasil preview (function)
-  Widget _mediaPreviewCard() {
+  // Komponen Kartu Hasil Preview & Status Downloader
+  Widget _mediaPreviewSection(DownloaderState state) {
+    if (state is DownloaderLoading) {
+      return GlassCard(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: const [
+            CircularProgressIndicator(color: Colors.white),
+            SizedBox(height: 14),
+            Text(
+              'Mengekstrak media dari Instagram...',
+              style: TextStyle(fontSize: 13, color: Colors.white70),
+            ),
+          ],
+        ),
+      );
+    }
+
+    MediaItem? item;
+    double progress = 0.0;
+    bool isSuccess = false;
+
+    if (state is MediaExtractedSuccess) {
+      item = state.mediaItem;
+    } else if (state is DownloadingProgress) {
+      item = state.mediaItem;
+      progress = state.progress;
+    } else if (state is DownloadSuccess) {
+      item = state.mediaItem;
+      isSuccess = true;
+      progress = 1.0;
+    }
+
+    if (item == null) return const SizedBox.shrink();
+
     return GlassCard(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -273,19 +346,27 @@ class _HomeScreenState extends State<HomeScreen> {
               height: 180,
               width: double.infinity,
               color: Colors.white.withValues(alpha: 0.08),
-              child: const Center(
-                child: Icon(
-                  Icons.play_circle_fill_rounded,
-                  size: 56,
-                  color: Colors.white70,
-                ),
-              ),
+              child: item.thumbnailUrl != null
+                  ? Image.network(
+                      item.thumbnailUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => const Center(
+                        child: Icon(Icons.movie_rounded, size: 48, color: Colors.white54),
+                      ),
+                    )
+                  : const Center(
+                      child: Icon(
+                        Icons.play_circle_fill_rounded,
+                        size: 56,
+                        color: Colors.white70,
+                      ),
+                    ),
             ),
           ),
           const SizedBox(height: 14),
-          const Text(
-            'Instagram Reels Video',
-            style: TextStyle(
+          Text(
+            item.title,
+            style: const TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.bold,
               color: Colors.white,
@@ -293,29 +374,12 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 4),
           Text(
-            'Mode $_selectedMode • Format: .mp4 (HD)',
+            'Mode $_selectedMode • Format: .${item.mediaType == 'photo' ? 'jpg' : 'mp4'} (HD)',
             style: const TextStyle(fontSize: 11, color: Colors.white54),
           ),
           const SizedBox(height: 16),
-          if (_isDownloadloading) ...[
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: LinearProgressIndicator(
-                value: _downloadProgress,
-                minHeight: 8,
-                backgroundColor: Colors.white.withValues(alpha: 0.1),
-                valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Center(
-              child: Text(
-                'Mengunduh... ${(_downloadProgress * 100).toInt()}%',
-                style: const TextStyle(fontSize: 12, color: Colors.white70),
-              ),
-            ),
-          ] else if (_isDownloadedSuccess) ...[
-            // Tombol Sukses Centang
+
+          if (isSuccess) ...[
             Container(
               height: 44,
               width: double.infinity,
@@ -334,7 +398,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   SizedBox(width: 8),
                   Text(
-                    'Tersimpan di Galeri!',
+                    'Tersimpan di Galeri HP!',
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.bold,
@@ -345,28 +409,20 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ] else ...[
-            // Tombol Biasa "Simpan ke Galeri"
-            SizedBox(
-              width: double.infinity,
-              child: GlassButton.custom(
-                height: 44,
-                shape: const LiquidRoundedRectangle(borderRadius: 12),
-                onTap: _startSimulatedDownload,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: const [
-                    Icon(Icons.download_rounded, size: 18, color: Colors.white),
-                    SizedBox(width: 8),
-                    Text(
-                      'Simpan ke Galeri',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ],
-                ),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: LinearProgressIndicator(
+                value: progress,
+                minHeight: 8,
+                backgroundColor: Colors.white.withValues(alpha: 0.1),
+                valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Center(
+              child: Text(
+                'Mengunduh & Menyimpan... ${(progress * 100).toInt()}%',
+                style: const TextStyle(fontSize: 12, color: Colors.white70),
               ),
             ),
           ],
